@@ -16,8 +16,10 @@ import (
 )
 
 type Config struct {
-	ListenAddr string `mapstructure:"listen_address" hcl:"listen_address,optional"`
-	LogLevel   string `hcl:"log_level,optional"`
+	ListenAddr string   `mapstructure:"listen_address" hcl:"listen_address,optional"`
+	LogLevel   string   `hcl:"log_level,optional"`
+	AllowedIPs []string `hcl:"allowed_ips,optional"`
+	SecretKey  string   `hcl:"secret_key,optional"`
 
 	Repositories []RepositoryConfig `hcl:"repository,block"`
 	Deployments  []DeploymentConfig `hcl:"deployment,block"`

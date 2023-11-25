@@ -19,6 +19,12 @@ type WebhookServer struct {
 }
 
 func NewServer(cfg Config) *WebhookServer {
+	// Unskippable warning if the user hasn't set up any authentication
+	if cfg.SecretKey == "" && len(cfg.AllowedIPs) == 0 {
+		log.Warn("Your secret_key and allowed_ips have not been configured.")
+		log.Warn("This is extremely insecure, and should never be done outside of testing.")
+	}
+
 	toRet := &WebhookServer{
 		repositories: make(map[string]*Repository),
 		deployments:  make(map[string]*Deployment),
@@ -33,10 +39,16 @@ func NewServer(cfg Config) *WebhookServer {
 	}
 	for _, deployCfg := range cfg.Deployments {
 		if deploy, err := NewDeployment(deployCfg); err != nil {
-			log.WithError(err).Panic("Invalid config")
+			log.WithError(err).Fatal("Invalid config")
 		} else {
 			toRet.deployments[deployCfg.Name] = deploy
 		}
+	}
+
+	// Wrap our main HTTP handler
+	handler := http.TimeoutHandler(toRet, webhookTimeout*time.Second, "Request timed out")
+	if cfg.SecretKey != "" {
+		handler = SecretKeyHandler(handler, "X-Key", cfg.SecretKey)
 	}
 
 	mux := http.NewServeMux()
@@ -45,14 +57,23 @@ func NewServer(cfg Config) *WebhookServer {
 		resp.WriteHeader(http.StatusOK)
 		_, _ = resp.Write([]byte("OK"))
 	})
-	mux.Handle("/", http.TimeoutHandler(toRet, webhookTimeout*time.Second, "Request timed out"))
-	toRet.Server.Handler = mux
+	mux.Handle("/", handler)
+
+	// Allowed IPs should protect the entire mux
+	if len(cfg.AllowedIPs) > 0 {
+		// Parse each IP as a CIDR
+		networks := ParseCIDRs(cfg.AllowedIPs)
+		toRet.Server.Handler = IPAllowlistHandler(mux, networks)
+	} else {
+		toRet.Server.Handler = mux
+	}
 
 	return toRet
 }
 
 func (s *WebhookServer) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 	logData := make(log.Fields)
+
 	if req.Method != http.MethodPost {
 		resp.WriteHeader(http.StatusMethodNotAllowed)
 		_, _ = resp.Write([]byte("Method not allowed"))
