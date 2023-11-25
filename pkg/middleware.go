@@ -1,6 +1,9 @@
 package pkg
 
 import (
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	log "github.com/sirupsen/logrus"
 	"net"
 	"net/http"
@@ -62,4 +65,36 @@ func SecretKeyHandler(handler http.Handler, name string, key string) http.Handle
 
 		handler.ServeHTTP(w, r)
 	})
+}
+
+var (
+	hookCount = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "image_updater",
+		Subsystem: "http",
+		Name:      "hooks_received",
+		Help:      "The number of webhook calls received",
+	}, []string{"code"})
+	hooksRunning = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: "image_updater",
+		Subsystem: "http",
+		Name:      "hooks_inflight",
+		Help:      "The number of webhook calls currently being processed",
+	})
+	hookDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: "image_updater",
+		Subsystem: "http",
+		Name:      "hooks_duration",
+		Help:      "The response times of webhook calls",
+	}, []string{})
+)
+
+func InstrumentHandler(handler http.Handler) http.Handler {
+	// Track count and response codes
+	handler = promhttp.InstrumentHandlerCounter(hookCount, handler)
+	// In-flight hooks
+	handler = promhttp.InstrumentHandlerInFlight(hooksRunning, handler)
+	// And response times
+	handler = promhttp.InstrumentHandlerDuration(hookDuration, handler)
+
+	return handler
 }

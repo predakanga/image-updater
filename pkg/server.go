@@ -50,6 +50,7 @@ func NewServer(cfg Config) *WebhookServer {
 	if cfg.SecretKey != "" {
 		handler = SecretKeyHandler(handler, "X-Key", cfg.SecretKey)
 	}
+	handler = InstrumentHandler(handler)
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
