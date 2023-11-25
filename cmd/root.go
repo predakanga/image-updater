@@ -3,14 +3,8 @@ package cmd
 import (
 	"context"
 	"errors"
-	"fmt"
-	"github.com/hashicorp/hcl/v2"
-	"github.com/hashicorp/hcl/v2/gohcl"
-	"github.com/hashicorp/hcl/v2/hclsyntax"
-	"github.com/mitchellh/mapstructure"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 	"net/http"
 	"os"
 	"os/signal"
@@ -26,7 +20,6 @@ const baseLogLevel = log.InfoLevel
 
 var cfgFile string
 var verbosity int
-var flagValues = make(map[string]interface{})
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -57,7 +50,7 @@ var rootCmd = &cobra.Command{
 			}
 		}
 
-		cfg, err := loadConfig(configPath, cmd.Flags())
+		cfg, err := pkg.LoadConfig(configPath, cmd.Flags())
 		if err != nil {
 			log.WithError(err).Fatal("Config file loading failed")
 		}
@@ -109,7 +102,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default is $HOME/.image-updater.conf or /etc/image-updater.conf)")
 	rootCmd.PersistentFlags().CountVarP(&verbosity, "verbose", "v", "Increase log verbosity")
 
-	pkg.AddFlags(rootCmd, flagValues)
+	pkg.AddFlags(rootCmd)
 }
 
 func initConfig() {
@@ -130,42 +123,4 @@ func initConfig() {
 			_ = allFlags.Set(flagName, val)
 		}
 	}
-}
-
-func loadConfig(configPath string, flags *pflag.FlagSet) (pkg.Config, error) {
-	var toRet pkg.Config
-
-	// Parse the config file
-	// NB: Done manually because hclsimple requires that the filename end in .hcl
-	log.Debugf("Loading config file: %s", configPath)
-	cfgBytes, err := os.ReadFile(configPath)
-	if err != nil {
-		return toRet, fmt.Errorf("could not read config file: %w", err)
-	}
-	cfgBody, diags := hclsyntax.ParseConfig(cfgBytes, path.Base(configPath), hcl.Pos{Line: 1, Column: 1})
-	if diags.HasErrors() {
-		return toRet, fmt.Errorf("could not parse config file: %w", diags)
-	}
-
-	// Start by populating the config with our default flags
-	if err := mapstructure.Decode(flagValues, &toRet); err != nil {
-		log.WithError(err).Fatalf("Could not create default config")
-	}
-
-	diags = gohcl.DecodeBody(cfgBody.Body, nil, &toRet)
-	if diags.HasErrors() {
-		return toRet, fmt.Errorf("invalid config file: %w", diags)
-	}
-
-	// Now that we have our config struct, merge any non-default flags with it
-	// NB: Visit() only visits non-default flags
-	changedFlags := make(map[string]interface{})
-	flags.Visit(func(flag *pflag.Flag) {
-		changedFlags[flag.Name] = flagValues[flag.Name]
-	})
-	if err := mapstructure.Decode(changedFlags, &toRet); err != nil {
-		return toRet, fmt.Errorf("could not finalize config: %w", err)
-	}
-
-	return toRet, nil
 }
