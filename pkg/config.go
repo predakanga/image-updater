@@ -36,10 +36,11 @@ type RepositoryConfig struct {
 }
 
 type DeploymentConfig struct {
-	Name       string   `hcl:"name,label"`
-	Repository string   `hcl:"repository"`
-	Path       string   `hcl:"path,optional"`
-	Images     []string `hcl:"image"`
+	Name          string   `hcl:"name,label"`
+	Repository    string   `hcl:"repository"`
+	Path          string   `hcl:"path,optional"`
+	CommitMessage string   `hcl:"message,optional"`
+	Images        []string `hcl:"image"`
 }
 
 var flagValues = make(map[string]interface{})

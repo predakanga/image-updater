@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	mapset "github.com/deckarep/golang-set/v2"
@@ -10,18 +11,22 @@ import (
 	"regexp"
 	"sigs.k8s.io/kustomize/api/types"
 	"strings"
+	"text/template"
 )
 
 type Deployment struct {
+	Name           string
 	RepositoryName string
 	KustomizePath  string
+	CommitMessage  *template.Template
 	Images         []string
 }
 
 var errorNoModification = errors.New("no changes made")
 
-func NewDeployment(cfg DeploymentConfig) *Deployment {
+func NewDeployment(cfg DeploymentConfig) (*Deployment, error) {
 	toRet := &Deployment{
+		Name:           cfg.Name,
 		RepositoryName: cfg.Repository,
 		KustomizePath:  cfg.Path,
 		Images:         cfg.Images,
@@ -29,11 +34,19 @@ func NewDeployment(cfg DeploymentConfig) *Deployment {
 	if toRet.KustomizePath == "" {
 		toRet.KustomizePath = "kustomization.yaml"
 	}
+	if cfg.CommitMessage == "" {
+		cfg.CommitMessage = "[{{ .name }}] Version bumped to {{ .tag }} by {{ .user }}"
+	}
+	tpl := template.New("")
+	if _, err := tpl.Parse(cfg.CommitMessage); err != nil {
+		return nil, fmt.Errorf("failed to parse message template: %w", err)
+	}
+	toRet.CommitMessage = tpl
 
-	return toRet
+	return toRet, nil
 }
 
-func (d Deployment) Apply(worktree *git.Worktree, newTag string) error {
+func (d Deployment) Apply(worktree *git.Worktree, newTag string, user string) error {
 	// Start by reading the kustomization file
 	inFile, err := worktree.Filesystem.Open(d.KustomizePath)
 	if err != nil {
@@ -97,7 +110,15 @@ func (d Deployment) Apply(worktree *git.Worktree, newTag string) error {
 	}
 
 	// Commit the change
-	_, err = worktree.Commit("Automated version bump", &git.CommitOptions{})
+	commitMsg := bytes.Buffer{}
+	if err := d.CommitMessage.Execute(&commitMsg, map[string]string{
+		"name": d.Name,
+		"tag":  newTag,
+		"user": user,
+	}); err != nil {
+		return fmt.Errorf("failed to execute message template: %w", err)
+	}
+	_, err = worktree.Commit(commitMsg.String(), &git.CommitOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to commit kustomization file: %w", err)
 	}

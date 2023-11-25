@@ -32,7 +32,11 @@ func NewServer(cfg Config) *WebhookServer {
 		toRet.repositories[repoCfg.Name] = NewRepository(repoCfg)
 	}
 	for _, deployCfg := range cfg.Deployments {
-		toRet.deployments[deployCfg.Name] = NewDeployment(deployCfg)
+		if deploy, err := NewDeployment(deployCfg); err != nil {
+			log.WithError(err).Panic("Invalid config")
+		} else {
+			toRet.deployments[deployCfg.Name] = deploy
+		}
 	}
 
 	mux := http.NewServeMux()
@@ -118,7 +122,7 @@ func (s *WebhookServer) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 		_, _ = resp.Write([]byte("Internal server error"))
 		return
 	} else {
-		if err := deployment.Apply(wt, payload.TagName); err != nil {
+		if err := deployment.Apply(wt, payload.TagName, payload.AuthorizedBy); err != nil {
 			if errors.Is(err, errorNoModification) {
 				resp.WriteHeader(http.StatusNotModified)
 				_, _ = resp.Write([]byte("No changes made"))
