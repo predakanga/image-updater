@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"errors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	log "github.com/sirupsen/logrus"
 	"io"
@@ -116,6 +117,11 @@ func (s *WebhookServer) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 		return
 	} else {
 		if err := deployment.Apply(wt, payload.TagName); err != nil {
+			if errors.Is(err, errorNoModification) {
+				resp.WriteHeader(http.StatusNotModified)
+				_, _ = resp.Write([]byte("No changes made"))
+				return
+			}
 			log.WithFields(logData).WithError(err).Warn("Failed to apply deployment")
 			resp.WriteHeader(http.StatusInternalServerError)
 			_, _ = resp.Write([]byte("Internal server error"))

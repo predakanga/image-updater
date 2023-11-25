@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"errors"
 	"fmt"
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/go-git/go-git/v5"
@@ -16,6 +17,8 @@ type Deployment struct {
 	KustomizePath  string
 	Images         []string
 }
+
+var errorNoModification = errors.New("no changes made")
 
 func NewDeployment(cfg DeploymentConfig) *Deployment {
 	toRet := &Deployment{
@@ -78,7 +81,7 @@ func (d Deployment) Apply(worktree *git.Worktree, newTag string) error {
 		return fmt.Errorf("kustomization file does not contain image(s): %s", strings.Join(wantedImages.ToSlice(), ", "))
 	}
 	if !changeMade {
-		return fmt.Errorf("no changes made")
+		return errorNoModification
 	}
 
 	// Write it back and stage the file for commit
