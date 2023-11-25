@@ -133,7 +133,7 @@ func fnmatch(pattern string, input string) bool {
 	}
 	// Make sure everything but the *s are quoted
 	parts := strings.Split(pattern, "*")
-	quotedParts := make([]string, len(parts))
+	quotedParts := make([]string, 0, len(parts))
 	for _, part := range parts {
 		quotedParts = append(quotedParts, regexp.QuoteMeta(part))
 	}
