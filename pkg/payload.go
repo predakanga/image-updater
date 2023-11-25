@@ -7,8 +7,9 @@ import (
 )
 
 type webhookPayload struct {
-	Deployment string `json:"deployment"`
-	TagName    string `json:"tag_name"`
+	Deployment   string `json:"deployment"`
+	TagName      string `json:"tag_name"`
+	AuthorizedBy string `json:"authorized_by"`
 }
 
 //goland:noinspection GoErrorStringFormat
@@ -23,6 +24,9 @@ func (p webhookPayload) Validate() error {
 	}
 	if p.TagName == "" {
 		return fmt.Errorf("%w: tag_name", missingFieldError)
+	}
+	if p.AuthorizedBy == "" {
+		return fmt.Errorf("%w: authorized_by", missingFieldError)
 	}
 	if strings.Contains(p.TagName, " ") {
 		return fmt.Errorf("%w: tag_name", invalidFieldError)

@@ -4,5 +4,5 @@ TODO items
 - [x] Add support for wildcard in images
 - [x] Test env substitution in config file, for passwords
 - [x] Add support for auto-detecting main/master branch
-- [ ] Add audit logging
+- [x] Add audit logging
 - [ ] Add ArgoCD triggering

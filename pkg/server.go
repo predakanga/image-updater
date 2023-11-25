@@ -79,6 +79,7 @@ func (s *WebhookServer) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 	}
 	// Look up the deployment
 	logData["deployment"] = payload.Deployment
+	logData["authorized_by"] = payload.AuthorizedBy
 	deployment, ok := s.deployments[payload.Deployment]
 	if !ok {
 		resp.WriteHeader(http.StatusNotFound)
@@ -136,6 +137,7 @@ func (s *WebhookServer) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 		return
 	}
 	// Let the caller know we're done
+	log.Infof("Deployment %s was updated to %s by %s", payload.Deployment, payload.TagName, payload.AuthorizedBy)
 	resp.WriteHeader(http.StatusOK)
 	_, _ = resp.Write([]byte("OK"))
 }
