@@ -44,19 +44,21 @@ func (r *Repository) Discard() {
 	r.filesystem = nil
 }
 
-func (r *Repository) Fetch(ctx context.Context) error {
+func (r *Repository) Fetch(ctx context.Context) (error, string) {
 	// Create a fresh set of storage
 	r.storage = memory.NewStorage()
 	r.filesystem = memfs.New()
 
 	// Actually perform the fetch
+	buf := bytes.Buffer{}
 	opts := git.CloneOptions{
 		URL: r.url,
 		Auth: &http.BasicAuth{
 			Username: r.username,
 			Password: r.password,
 		},
-		Tags: git.NoTags,
+		Progress: &buf,
+		Tags:     git.NoTags,
 	}
 	if r.branch != "" {
 		opts.ReferenceName = plumbing.NewBranchReferenceName(r.branch)
@@ -65,28 +67,28 @@ func (r *Repository) Fetch(ctx context.Context) error {
 	if repo, err := git.CloneContext(ctx, r.storage, r.filesystem, &opts); err == nil {
 		r.repository = repo
 	} else {
-		return err
+		return err, buf.String()
 	}
 
 	// Configure the committer details
 	if cfg, err := r.repository.Config(); err != nil {
-		return fmt.Errorf("configuring repository failed: %w", err)
+		return fmt.Errorf("configuring repository failed: %w", err), ""
 	} else {
 		cfg.Author.Name = r.commitName
 		cfg.Author.Email = r.commitEmail
 		if err := r.repository.SetConfig(cfg); err != nil {
-			return fmt.Errorf("configuring repository failed: %w", err)
+			return fmt.Errorf("configuring repository failed: %w", err), ""
 		}
 	}
 
-	return nil
+	return nil, ""
 }
 
 func (r *Repository) Worktree() (*git.Worktree, error) {
 	return r.repository.Worktree()
 }
 
-func (r *Repository) Push(ctx context.Context) error {
+func (r *Repository) Push(ctx context.Context) (error, string) {
 	buf := bytes.Buffer{}
 	err := r.repository.PushContext(ctx, &git.PushOptions{
 		Auth: &http.BasicAuth{
@@ -96,8 +98,8 @@ func (r *Repository) Push(ctx context.Context) error {
 		Progress: &buf,
 	})
 	if err != nil {
-		return fmt.Errorf("push failed: %w\ndetails: %v", err, buf.String())
+		return fmt.Errorf("push failed: %w", err), buf.String()
 	}
 
-	return nil
+	return nil, ""
 }

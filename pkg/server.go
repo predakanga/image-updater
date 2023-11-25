@@ -104,8 +104,9 @@ func (s *WebhookServer) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 	}
 	// Attempt to fetch the repository, with timeout
 	defer repo.Discard()
-	if err := repo.Fetch(req.Context()); err != nil {
+	if err, details := repo.Fetch(req.Context()); err != nil {
 		log.WithFields(logData).WithError(err).Warn("Failed to fetch repository")
+		log.WithFields(logData).WithError(err).Debugf("Details: %s", details)
 		resp.WriteHeader(http.StatusInternalServerError)
 		_, _ = resp.Write([]byte("Internal server error"))
 		return
@@ -130,8 +131,9 @@ func (s *WebhookServer) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 		}
 	}
 	// And finally, push the changes upstream
-	if err := repo.Push(req.Context()); err != nil {
+	if err, details := repo.Push(req.Context()); err != nil {
 		log.WithFields(logData).WithError(err).Warn("Failed to push repository")
+		log.WithFields(logData).WithError(err).Debugf("Details: %s", details)
 		resp.WriteHeader(http.StatusInternalServerError)
 		_, _ = resp.Write([]byte("Internal server error"))
 		return
