@@ -2,11 +2,13 @@ package pkg
 
 import (
 	"fmt"
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/go-git/go-git/v5"
 	"gopkg.in/yaml.v3"
 	"io"
 	"regexp"
 	"sigs.k8s.io/kustomize/api/types"
+	"strings"
 )
 
 type Deployment struct {
@@ -51,19 +53,29 @@ func (d Deployment) Apply(worktree *git.Worktree, newTag string) error {
 	// Also convert the bytes to a string
 	kustomizationString := string(kustomizationBytes[:])
 
-	// Loop over the deployment's images, replacing their tags
+	// Keep track of what images should be found, and whether we've made changes at all
 	changeMade := false
+	wantedImages := mapset.NewThreadUnsafeSet[string]()
 	for _, im := range d.Images {
-		// Ensure that the image exists in the unmarshalled file first
-		if !hasImage(kustomization.Images, im) {
-			return fmt.Errorf("kustomization file does not contain image %s", im)
+		if !strings.ContainsRune(im, '*') {
+			wantedImages.Add(im)
 		}
-		if newKustomizationString, err := changeTag(kustomizationString, im, newTag); err != nil {
-			return fmt.Errorf("failed to replace image %s: %w", im, err)
+	}
+	// Loop over the deployment's images, replacing their tags
+	for _, im := range kustomization.Images {
+		if !matchImage(d.Images, im.Name) {
+			continue
+		}
+		wantedImages.Remove(im.Name)
+		if newKustomizationString, err := changeTag(kustomizationString, im.Name, newTag); err != nil {
+			return fmt.Errorf("failed to replace image %s: %w", im.Name, err)
 		} else {
 			changeMade = newKustomizationString != kustomizationString
 			kustomizationString = newKustomizationString
 		}
+	}
+	if !wantedImages.IsEmpty() {
+		return fmt.Errorf("kustomization file does not contain image(s): %s", strings.Join(wantedImages.ToSlice(), ", "))
 	}
 	if !changeMade {
 		return fmt.Errorf("no changes made")
@@ -90,9 +102,27 @@ func (d Deployment) Apply(worktree *git.Worktree, newTag string) error {
 	return nil
 }
 
-func hasImage(images []types.Image, search string) bool {
+func fnmatch(pattern string, input string) bool {
+	// Shortcut for when no globbing is required
+	if !strings.ContainsRune(pattern, '*') {
+		return input == pattern
+	}
+	// Make sure everything but the *s are quoted
+	parts := strings.Split(pattern, "*")
+	quotedParts := make([]string, len(parts))
+	for _, part := range parts {
+		quotedParts = append(quotedParts, regexp.QuoteMeta(part))
+	}
+	// And construct and match the final regex
+	// NB: String must be anchored because re.Match is really a search
+	finalPattern := "^" + strings.Join(quotedParts, ".*") + "$"
+	re := regexp.MustCompile(finalPattern)
+	return re.MatchString(input)
+}
+
+func matchImage(images []string, search string) bool {
 	for _, image := range images {
-		if image.Name == search {
+		if fnmatch(image, search) {
 			return true
 		}
 	}
