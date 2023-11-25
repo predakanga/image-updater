@@ -1,4 +1,4 @@
-module github.com/predakanga/image-updater-webhook
+module github.com/predakanga/image-updater
 
 go 1.21
 

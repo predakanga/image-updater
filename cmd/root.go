@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"errors"
+	"github.com/predakanga/image-updater/pkg"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"net/http"
@@ -10,7 +11,6 @@ import (
 	"os/signal"
 	"path"
 	"strings"
-	"github.com/predakanga/image-updater-webhook/pkg"
 	"time"
 )
 
