@@ -50,16 +50,19 @@ func (r *Repository) Fetch(ctx context.Context) error {
 	r.filesystem = memfs.New()
 
 	// Actually perform the fetch
-	if repo, err := git.CloneContext(ctx, r.storage, r.filesystem, &git.CloneOptions{
+	opts := git.CloneOptions{
 		URL: r.url,
 		Auth: &http.BasicAuth{
 			Username: r.username,
 			Password: r.password,
 		},
-		ReferenceName: plumbing.NewBranchReferenceName(r.branch),
-		SingleBranch:  true,
-		Tags:          git.NoTags,
-	}); err == nil {
+		Tags: git.NoTags,
+	}
+	if r.branch != "" {
+		opts.ReferenceName = plumbing.NewBranchReferenceName(r.branch)
+		opts.SingleBranch = true
+	}
+	if repo, err := git.CloneContext(ctx, r.storage, r.filesystem, &opts); err == nil {
 		r.repository = repo
 	} else {
 		return err
