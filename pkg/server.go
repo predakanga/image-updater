@@ -61,18 +61,22 @@ func (s *WebhookServer) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 	// Read the payload
 	payloadBytes, err := io.ReadAll(req.Body)
 	if err != nil {
-		logError(resp, err, "Failed to read payload")
+		log.WithError(err).Warn("Failed to read payload")
+		resp.WriteHeader(500)
+		_, _ = io.WriteString(resp, "Failed to read payload")
 		return
 	}
 	// Decode the request
 	var payload webhookPayload
 	strictErr, err := json.UnmarshalStrict(payloadBytes, &payload, json.DisallowDuplicateFields, json.DisallowUnknownFields)
-	if err != nil {
-		logError(resp, err, "Failed to decode payload")
-		return
+	firstError := err
+	if firstError == nil && len(strictErr) > 0 {
+		firstError = strictErr[0]
 	}
-	if len(strictErr) != 0 {
-		logError(resp, strictErr[0], "Failed to decode payload")
+	if firstError != nil {
+		log.WithError(firstError).Warn("Failed to decode payload")
+		resp.WriteHeader(500)
+		_, _ = io.WriteString(resp, "Failed to decode payload")
 		return
 	}
 	// And validate it
