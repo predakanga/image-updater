@@ -15,21 +15,23 @@ import (
 )
 
 type Deployment struct {
-	Name           string
-	RepositoryName string
-	KustomizePath  string
-	CommitMessage  *template.Template
-	Images         []string
+	Name            string
+	RepositoryName  string
+	KustomizePath   string
+	CommitMessage   *template.Template
+	Images          []string
+	ApplicationName string
 }
 
 var errorNoModification = errors.New("no changes made")
 
 func NewDeployment(cfg DeploymentConfig) (*Deployment, error) {
 	toRet := &Deployment{
-		Name:           cfg.Name,
-		RepositoryName: cfg.Repository,
-		KustomizePath:  cfg.Path,
-		Images:         cfg.Images,
+		Name:            cfg.Name,
+		RepositoryName:  cfg.Repository,
+		KustomizePath:   cfg.Path,
+		Images:          cfg.Images,
+		ApplicationName: cfg.ArgoName,
 	}
 	if toRet.KustomizePath == "" {
 		toRet.KustomizePath = "kustomization.yaml"
@@ -46,25 +48,23 @@ func NewDeployment(cfg DeploymentConfig) (*Deployment, error) {
 	return toRet, nil
 }
 
-func (d Deployment) Apply(worktree *git.Worktree, newTag string, user string) error {
+func (d Deployment) Apply(worktree *git.Worktree, newTag string, user string) (string, error) {
 	// Start by reading the kustomization file
 	inFile, err := worktree.Filesystem.Open(d.KustomizePath)
 	if err != nil {
-		return fmt.Errorf("failed to open kustomization file: %w", err)
+		return "", fmt.Errorf("failed to open kustomization file: %w", err)
 	}
-	defer func() {
-		_ = inFile.Close()
-	}()
+	defer inFile.Close()
 	kustomizationBytes, err := io.ReadAll(inFile)
 	if err != nil {
-		return fmt.Errorf("failed to read kustomization file: %w", err)
+		return "", fmt.Errorf("failed to read kustomization file: %w", err)
 	}
 
 	// Then unmarshal it so that we have a source of truth to work from
 	var kustomization types.Kustomization
 	err = yaml.Unmarshal(kustomizationBytes, &kustomization)
 	if err != nil {
-		return fmt.Errorf("failed to decode kustomization file: %w", err)
+		return "", fmt.Errorf("failed to decode kustomization file: %w", err)
 	}
 	// Also convert the bytes to a string
 	kustomizationString := string(kustomizationBytes[:])
@@ -84,29 +84,30 @@ func (d Deployment) Apply(worktree *git.Worktree, newTag string, user string) er
 		}
 		wantedImages.Remove(im.Name)
 		if newKustomizationString, err := changeTag(kustomizationString, im.Name, newTag); err != nil {
-			return fmt.Errorf("failed to replace image %s: %w", im.Name, err)
+			return "", fmt.Errorf("failed to replace image %s: %w", im.Name, err)
 		} else {
 			changeMade = newKustomizationString != kustomizationString
 			kustomizationString = newKustomizationString
 		}
 	}
 	if !wantedImages.IsEmpty() {
-		return fmt.Errorf("kustomization file does not contain image(s): %s", strings.Join(wantedImages.ToSlice(), ", "))
+		return "", fmt.Errorf("kustomization file does not contain image(s): %s", strings.Join(wantedImages.ToSlice(), ", "))
 	}
 	if !changeMade {
-		return errorNoModification
+		return "", errorNoModification
 	}
 
 	// Write it back and stage the file for commit
 	outFile, err := worktree.Filesystem.Create(d.KustomizePath)
 	_, err = outFile.Write([]byte(kustomizationString))
 	if err != nil {
-		return fmt.Errorf("failed to write kustomization file: %w", err)
+		_ = outFile.Close()
+		return "", fmt.Errorf("failed to write kustomization file: %w", err)
 	}
 	_ = outFile.Close()
 	_, err = worktree.Add(d.KustomizePath)
 	if err != nil {
-		return fmt.Errorf("failed to stage kustomization file: %w", err)
+		return "", fmt.Errorf("failed to stage kustomization file: %w", err)
 	}
 
 	// Commit the change
@@ -116,14 +117,14 @@ func (d Deployment) Apply(worktree *git.Worktree, newTag string, user string) er
 		"tag":  newTag,
 		"user": user,
 	}); err != nil {
-		return fmt.Errorf("failed to execute message template: %w", err)
+		return "", fmt.Errorf("failed to execute message template: %w", err)
 	}
-	_, err = worktree.Commit(commitMsg.String(), &git.CommitOptions{})
+	commitHash, err := worktree.Commit(commitMsg.String(), &git.CommitOptions{})
 	if err != nil {
-		return fmt.Errorf("failed to commit kustomization file: %w", err)
+		return "", fmt.Errorf("failed to commit kustomization file: %w", err)
 	}
 
-	return nil
+	return commitHash.String(), nil
 }
 
 func fnmatch(pattern string, input string) bool {

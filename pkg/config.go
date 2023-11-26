@@ -20,6 +20,8 @@ type Config struct {
 	LogLevel   string   `hcl:"log_level,optional"`
 	AllowedIPs []string `hcl:"allowed_ips,optional"`
 	SecretKey  string   `hcl:"secret_key,optional"`
+	ArgoToken  string   `hcl:"argocd_token"`
+	ArgoUrl    string   `hcl:"argocd_url"`
 
 	Repositories []RepositoryConfig `hcl:"repository,block"`
 	Deployments  []DeploymentConfig `hcl:"deployment,block"`
@@ -41,8 +43,9 @@ type DeploymentConfig struct {
 	Name          string   `hcl:"name,label"`
 	Repository    string   `hcl:"repository"`
 	Path          string   `hcl:"path,optional"`
-	CommitMessage string   `hcl:"message,optional"`
 	Images        []string `hcl:"image"`
+	CommitMessage string   `hcl:"message,optional"`
+	ArgoName      string   `hcl:"argocd_app,optional"`
 }
 
 var flagValues = make(map[string]interface{})

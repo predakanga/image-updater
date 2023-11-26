@@ -5,4 +5,4 @@ TODO items
 - [x] Test env substitution in config file, for passwords
 - [x] Add support for auto-detecting main/master branch
 - [x] Add audit logging
-- [ ] Add ArgoCD triggering
+- [x] Add ArgoCD triggering

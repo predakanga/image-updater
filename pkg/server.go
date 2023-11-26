@@ -15,6 +15,8 @@ const webhookTimeout = 30
 type WebhookServer struct {
 	repositories map[string]*Repository
 	deployments  map[string]*Deployment
+	argoToken    string
+	argoUrl      string
 	http.Server
 }
 
@@ -28,6 +30,8 @@ func NewServer(cfg Config) *WebhookServer {
 	toRet := &WebhookServer{
 		repositories: make(map[string]*Repository),
 		deployments:  make(map[string]*Deployment),
+		argoToken:    cfg.ArgoToken,
+		argoUrl:      cfg.ArgoUrl,
 		Server: http.Server{
 			Addr:         cfg.ListenAddr,
 			WriteTimeout: (webhookTimeout + 1) * time.Second,
@@ -142,13 +146,14 @@ func (s *WebhookServer) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 		return
 	}
 	// Hand the worktree to the deployment, to update
+	var newRevision string
 	if wt, err := repo.Worktree(); err != nil {
 		log.WithFields(logData).WithError(err).Warn("Failed to fetch worktree")
 		resp.WriteHeader(http.StatusInternalServerError)
 		_, _ = resp.Write([]byte("Internal server error"))
 		return
 	} else {
-		if err := deployment.Apply(wt, payload.TagName, payload.AuthorizedBy); err != nil {
+		if newRevision, err = deployment.Apply(wt, payload.TagName, payload.AuthorizedBy); err != nil {
 			if errors.Is(err, errorNoModification) {
 				resp.WriteHeader(http.StatusNotModified)
 				_, _ = resp.Write([]byte("No changes made"))
@@ -172,4 +177,9 @@ func (s *WebhookServer) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 	log.Infof("Deployment %s was updated to %s by %s", payload.Deployment, payload.TagName, payload.AuthorizedBy)
 	resp.WriteHeader(http.StatusOK)
 	_, _ = resp.Write([]byte("OK"))
+
+	// Finally trigger ArgoCD in the background, because we have to wait for it to refresh
+	if s.argoUrl != "" && deployment.ApplicationName != "" {
+		go s.argoSync(deployment.ApplicationName, newRevision)
+	}
 }
