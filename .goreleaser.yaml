@@ -7,10 +7,14 @@ before:
 builds:
   - env:
       - CGO_ENABLED=0
+    # Limit our targets to cut down the build time
     goos:
       - linux
       - windows
-      - darwin
+    goarch:
+      - amd64
+      - arm64
+    flags: ["-trimpath"]
 
 archives:
   - format: tar.gz
@@ -19,13 +23,8 @@ archives:
       {{ .ProjectName }}_
       {{- title .Os }}_
       {{- if eq .Arch "amd64" }}x86_64
-      {{- else if eq .Arch "386" }}i386
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
-    # use zip for windows archives
-    format_overrides:
-      - goos: windows
-        format: zip
 
 changelog:
   sort: asc
@@ -33,3 +32,15 @@ changelog:
     exclude:
       - "^docs:"
       - "^test:"
+
+dockers:
+  - image_templates:
+      - 'ghcr.io/predakanga/image-updater:{{ .Tag }}'
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - "--pull"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.name={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--label=org.opencontainers.image.source={{.GitURL}}"
